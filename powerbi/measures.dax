@@ -1,0 +1,142 @@
+// =====================================================================
+// DAX measures - Marketing ROI Command Center
+// Create a blank table named _Measures and add each measure to it.
+//
+// Model (see BUILD_GUIDE.md):
+//   'Date'[Date]            1 --- * fact_contact[period_start]
+//   dim_period[period_key]  1 --- * fact_contact[period_key]
+//   dim_segment[segment_key]1 --- * fact_contact[segment_key]
+//   dim_attempt             (disconnected - used for the n-th call analysis)
+//   What-if parameters      (disconnected - Cost per Attempt, Cost per Minute,
+//                            Value per Subscription, Call Cap)
+//
+// Rule: every rate is a ratio of sums (DIVIDE(SUM, SUM)), never AVERAGE of a rate column.
+// =====================================================================
+
+
+// ---------- calculated tables (Modeling > New table) -----------------
+
+Date =
+ADDCOLUMNS (
+    CALENDAR ( DATE ( 2008, 5, 1 ), DATE ( 2010, 11, 30 ) ),
+    "Year", YEAR ( [Date] ),
+    "Month Num", MONTH ( [Date] ),
+    "Year-Month", FORMAT ( [Date], "YYYY-MM" ),
+    "Quarter", "Q" & ROUNDUP ( MONTH ( [Date] ) / 3, 0 )
+)
+// then: Table tools > Mark as date table > Date
+
+dim_attempt =
+SELECTCOLUMNS ( GENERATESERIES ( 1, 15, 1 ), "attempt_n", [Value] )
+
+
+// ---------- base volume ---------------------------------------------
+
+Clients Contacted = COUNTROWS ( fact_contact )
+
+Subscriptions = SUM ( fact_contact[subscribed] )
+
+Call Attempts = SUM ( fact_contact[contact_attempts] )
+
+Connected Minutes = SUM ( fact_contact[call_minutes] )
+
+
+// ---------- rates (ratio of sums) -----------------------------------
+
+Conversion Rate = DIVIDE ( [Subscriptions], [Clients Contacted] )
+
+Attempts per Subscription = DIVIDE ( [Call Attempts], [Subscriptions] )
+
+Baseline Conversion Rate =
+CALCULATE ( [Conversion Rate], REMOVEFILTERS ( dim_segment ) )
+
+Lift vs Baseline = DIVIDE ( [Conversion Rate], [Baseline Conversion Rate] )
+
+// Shown on the "Method" page only, next to [Conversion Rate], to explain why
+// averaging pre-computed rates is wrong (35.4% vs 11.3% on this data).
+Avg of Monthly Rates (do not use) =
+AVERAGEX ( VALUES ( dim_period[period_key] ), [Conversion Rate] )
+
+
+// ---------- time comparison -----------------------------------------
+
+Conversion Rate PY =
+CALCULATE ( [Conversion Rate], SAMEPERIODLASTYEAR ( 'Date'[Date] ) )
+
+Conversion Rate YoY pts =
+IF (
+    NOT ISBLANK ( [Conversion Rate PY] ),
+    [Conversion Rate] - [Conversion Rate PY]
+)
+
+
+// ---------- cost / value (driven by What-if parameters) -------------
+// Create with Modeling > New parameter > Numeric range:
+//   Cost per Attempt        0.50 .. 10.00 step 0.25  default 2.50
+//   Cost per Minute         0.00 .. 2.00  step 0.05  default 0.60
+//   Value per Subscription  20 .. 400     step 10    default 120
+//   Call Cap                1 .. 15       step 1     default 5
+// Power BI creates [Cost per Attempt Value] etc. automatically.
+
+Est. Calling Cost =
+[Call Attempts] * [Cost per Attempt Value]
+    + [Connected Minutes] * [Cost per Minute Value]
+
+Est. Subscription Value = [Subscriptions] * [Value per Subscription Value]
+
+Est. Net Value = [Est. Subscription Value] - [Est. Calling Cost]
+
+Est. ROI = DIVIDE ( [Est. Net Value], [Est. Calling Cost] )
+
+Cost per Subscription = DIVIDE ( [Est. Calling Cost], [Subscriptions] )
+
+
+// ---------- call-cap scenario ---------------------------------------
+// Assumes calling stops after a "yes": a client with k attempts who
+// subscribed converted on call k.
+
+Capped Attempts =
+VAR _cap = [Call Cap Value]
+RETURN
+    SUMX ( fact_contact, MIN ( fact_contact[contact_attempts], _cap ) )
+
+Capped Subscriptions =
+VAR _cap = [Call Cap Value]
+RETURN
+    CALCULATE ( [Subscriptions], fact_contact[contact_attempts] <= _cap )
+
+Attempts Saved % = 1 - DIVIDE ( [Capped Attempts], [Call Attempts] )
+
+Subscriptions Kept % = DIVIDE ( [Capped Subscriptions], [Subscriptions] )
+
+Capped Net Value =
+[Capped Subscriptions] * [Value per Subscription Value]
+    - [Capped Attempts] * [Cost per Attempt Value]
+
+Net Value Change vs No Cap =
+[Capped Net Value]
+    - ( [Subscriptions] * [Value per Subscription Value]
+        - [Call Attempts] * [Cost per Attempt Value] )
+
+
+// ---------- n-th call conversion (use dim_attempt[attempt_n] on the axis)
+
+Clients Reaching Call N =
+VAR _n = SELECTEDVALUE ( dim_attempt[attempt_n] )
+RETURN
+    CALCULATE ( [Clients Contacted], fact_contact[contact_attempts] >= _n )
+
+Converted on Call N =
+VAR _n = SELECTEDVALUE ( dim_attempt[attempt_n] )
+RETURN
+    CALCULATE ( [Subscriptions], fact_contact[contact_attempts] = _n )
+
+Conversion Rate of Call N = DIVIDE ( [Converted on Call N], [Clients Reaching Call N] )
+
+Cumulative Share of Conversions =
+VAR _n = SELECTEDVALUE ( dim_attempt[attempt_n] )
+RETURN
+    DIVIDE (
+        CALCULATE ( [Subscriptions], fact_contact[contact_attempts] <= _n ),
+        [Subscriptions]
+    )

@@ -1,0 +1,11 @@
+check,rows_affected,action
+exact duplicate rows,12,removed
+'unknown' in job,330,kept as its own category
+'unknown' in marital,80,kept as its own category
+'unknown' in education,1730,kept as its own category
+'unknown' in default,8596,kept as its own category
+'unknown' in housing,990,kept as its own category
+'unknown' in loan,990,kept as its own category
+pdays = 999 (never contacted),39661,converted to was_previously_contacted flag; days set to NULL
+duration = 0 seconds,4,kept (call not connected); excluded from model features
+rows in -> rows out,12,41188 -> 41176

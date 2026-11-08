@@ -1,0 +1,4 @@
+parameter,value,unit,note
+cost_per_call_attempt,2.50,EUR,"Assumption: agent time to dial, wait and log one attempt. Not in the dataset - edit to your own figure."
+cost_per_connected_minute,0.60,EUR,"Assumption: loaded agent cost per minute on a connected call (applied to the last-call duration in the data)."
+value_per_subscription,120.00,EUR,"Assumption: expected net margin from one term-deposit subscription. Not in the dataset."

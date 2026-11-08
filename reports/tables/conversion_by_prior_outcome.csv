@@ -1,0 +1,4 @@
+prior_outcome,clients,subscriptions,conversion_rate,lift_vs_average
+success,1373,894,0.6511,5.78
+failure,4252,605,0.1423,1.26
+nonexistent,35551,3140,0.0883,0.78
